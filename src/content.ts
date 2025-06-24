@@ -11,6 +11,7 @@ class SocialMediaInterceptor {
   private overlay: HTMLElement | null = null;
   private sessionData: SessionData | null = null;
   private timer: number | null = null;
+  private countdownInterval: number | null = null;
 
   constructor() {
     this.init();
@@ -80,8 +81,11 @@ class SocialMediaInterceptor {
           
           <div class="form-group">
             <label for="reason">What's your reason for visiting?</label>
-            <textarea id="reason" placeholder="e.g., Check messages from friends, Research for work project, etc." required></textarea>
-            <span class="helper-text">Be specific about your purpose</span>
+            <textarea id="reason" placeholder="e.g., Check messages from friends, Research for work project, etc." required minlength="20"></textarea>
+            <span class="helper-text">Be specific about your purpose (minimum 20 characters)</span>
+            <div class="character-counter">
+              <span id="char-count">0</span>/20 characters minimum
+            </div>
           </div>
           
           <div class="form-actions">
@@ -96,6 +100,33 @@ class SocialMediaInterceptor {
 
     document.body.appendChild(this.overlay);
     this.attachEventListeners();
+    this.setupCharacterCounter();
+  }
+
+  private setupCharacterCounter() {
+    const reasonTextarea = document.getElementById('reason') as HTMLTextAreaElement;
+    const charCount = document.getElementById('char-count') as HTMLSpanElement;
+    const continueBtn = document.getElementById('continue-btn') as HTMLButtonElement;
+
+    const updateCharacterCount = () => {
+      const currentLength = reasonTextarea.value.length;
+      charCount.textContent = currentLength.toString();
+      
+      if (currentLength < 20) {
+        charCount.style.color = '#ea4335';
+        continueBtn.disabled = true;
+        continueBtn.style.opacity = '0.5';
+        continueBtn.style.cursor = 'not-allowed';
+      } else {
+        charCount.style.color = '#34a853';
+        continueBtn.disabled = false;
+        continueBtn.style.opacity = '1';
+        continueBtn.style.cursor = 'pointer';
+      }
+    };
+
+    reasonTextarea.addEventListener('input', updateCharacterCount);
+    updateCharacterCount(); // Initial check
   }
 
   private attachEventListeners() {
@@ -118,6 +149,11 @@ class SocialMediaInterceptor {
 
     if (!reason) {
       alert('Please provide a reason for your visit.');
+      return;
+    }
+
+    if (reason.length < 20) {
+      alert('Please provide a more detailed reason (minimum 20 characters). This helps you be more intentional about your visit.');
       return;
     }
 
@@ -237,7 +273,10 @@ class SocialMediaInterceptor {
       return;
     }
 
-    this.showTimerIndicator();
+    // Only show timer indicator if it doesn't exist
+    if (!document.getElementById('doomscroll-timer')) {
+      this.showTimerIndicator();
+    }
     
     this.timer = setTimeout(() => {
       this.showTimeUpNotification();
@@ -258,9 +297,9 @@ class SocialMediaInterceptor {
     
     document.body.appendChild(indicator);
 
-    // Update countdown
+    // Update countdown immediately and start interval
     this.updateCountdown();
-    setInterval(() => this.updateCountdown(), 1000);
+    this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
 
     // Extend time functionality
     document.getElementById('extend-time')!.addEventListener('click', () => {
@@ -289,13 +328,58 @@ class SocialMediaInterceptor {
     const storageKey = `session_${window.location.hostname}`;
     await chrome.storage.local.set({ [storageKey]: this.sessionData });
 
+    // Clear existing timer
     if (this.timer) {
       clearTimeout(this.timer);
     }
-    this.startTimer();
+    
+    // Restart the timer without creating a new indicator
+    const timeRemaining = Math.max(0, this.sessionData.timeLimit * 60 * 1000 - (Date.now() - this.sessionData.startTime));
+    
+    if (timeRemaining <= 0) {
+      this.showTimeUpNotification();
+      return;
+    }
+    
+    this.timer = setTimeout(() => {
+      this.showTimeUpNotification();
+    }, timeRemaining);
+  }
+
+  private async extendTimeFromNotification(additionalMinutes: number) {
+    if (!this.sessionData) return;
+
+    this.sessionData.timeLimit += additionalMinutes;
+    
+    const storageKey = `session_${window.location.hostname}`;
+    await chrome.storage.local.set({ [storageKey]: this.sessionData });
+
+    // Restart the countdown interval if timer exists
+    if (document.getElementById('doomscroll-timer')) {
+      this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
+    }
+
+    // Clear existing timer and restart
+    if (this.timer) {
+      clearTimeout(this.timer);
+    }
+    
+    const timeRemaining = Math.max(0, this.sessionData.timeLimit * 60 * 1000 - (Date.now() - this.sessionData.startTime));
+    
+    if (timeRemaining > 0) {
+      this.timer = setTimeout(() => {
+        this.showTimeUpNotification();
+      }, timeRemaining);
+    }
   }
 
   private async showTimeUpNotification() {
+    // Clear the countdown interval
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+
     const notification = document.createElement('div');
     notification.id = 'doomscroll-timeup';
     notification.innerHTML = `
@@ -318,12 +402,12 @@ class SocialMediaInterceptor {
     });
 
     document.getElementById('extend-5min')!.addEventListener('click', () => {
-      this.extendTime(5);
+      this.extendTimeFromNotification(5);
       notification.remove();
     });
 
     document.getElementById('extend-10min')!.addEventListener('click', () => {
-      this.extendTime(10);
+      this.extendTimeFromNotification(10);
       notification.remove();
     });
 

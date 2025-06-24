@@ -78,6 +78,17 @@
   color: #666;
 }
 
+.character-counter {
+  display: block;
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+#char-count {
+  font-weight: 600;
+}
+
 .form-actions {
   display: flex;
   gap: 12px;
@@ -109,8 +120,15 @@
   min-height: 48px !important;
 }
 
-#continue-btn:hover {
+#continue-btn:hover:not(:disabled) {
   background: #3367d6 !important;
+}
+
+#continue-btn:disabled {
+  background: #e8eaed !important;
+  color: #9aa0a6 !important;
+  cursor: not-allowed !important;
+  opacity: 0.5 !important;
 }
 
 #cancel-btn {
